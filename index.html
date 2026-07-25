@@ -30,6 +30,7 @@
     --bg:#F7F6F1; --surface:#FFFFFF; --ink:#1A1D23; --ink-soft:#5B5E68;
     --navy:#16233F; --navy-2:#202F52; --gold:#B8862B; --gold-soft:#F1E4C8;
     --border:#E4E1D4; --danger:#A23B2E; --sage:#52795C; --slate:#3D5A6C;
+    --login-bg: var(--navy);
     --font-display:'Source Serif 4',Georgia,serif; --font-body:'Inter',sans-serif; --font-mono:'IBM Plex Mono',monospace;
   }
   *{box-sizing:border-box;}
@@ -41,7 +42,7 @@
   .seal::before{content:'';position:absolute;inset:4px;border:1px dashed var(--gold);border-radius:50%;opacity:.55;}
 
   /* ---- LOGIN ---- */
-  .login-wrap{flex:1;display:flex;align-items:center;justify-content:center;background:var(--navy);min-height:100vh;}
+  .login-wrap{flex:1;display:flex;align-items:center;justify-content:center;background:var(--login-bg);min-height:100vh;transition:background-color 2s ease;}
   .login-box{width:380px;background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:32px;}
   .login-box .seal{margin:0 auto 14px;}
   .login-title{font-family:var(--font-display);font-size:20px;font-weight:600;color:var(--navy);text-align:center;margin:0 0 4px;}
@@ -826,8 +827,8 @@ const api = {
    ================================================================ */
 const state = { session:null, modules:[], activeModule:null, allModulesMatrix:null, loading:false, error:'',
   bootLoading: true, bootError: null, bootErrorType: null, dialogIdleTampil: false,
-  emailLookupLoading: false, emailLookupNotFound: false, emailLookupTried: '', emailLookupMode: 'discover',
-  emailRegistrasiTerverifikasi: false, emailRegistrasiInfo: null,
+  emailLookupLoading: false, emailLookupNotFound: false, emailLookupTried: '',
+  emailRegistrasiInfo: null,
   gatePage: 'email', emailGerbang: '',
   sidebarOpen: window.innerWidth > 768,
   userMenuOpen: false,
@@ -2833,7 +2834,6 @@ async function handleSystemSettingsSubmit(ev){
   s.namaPemilikRekening = getFieldVal('ss-namaPemilikRekening');
   s.namaPimpinan = getFieldVal('ss-namaPimpinan');
   s.jabatanPimpinan = getFieldVal('ss-jabatanPimpinan');
-  s.driveFolderId = getFieldVal('ss-driveFolderId');
   s.driveAccountEmail = getFieldVal('ss-driveAccountEmail');
   s.namaPengirimEmail = getFieldVal('ss-namaPengirimEmail');
   s.alamatPengirimEmail = getFieldVal('ss-alamatPengirimEmail');
@@ -2860,11 +2860,19 @@ async function handleSystemSettingsSubmit(ev){
 function handleLogoKantorChange(input){
   const file = input.files && input.files[0];
   if (!file) return;
+  const preview = document.getElementById('ss-logo-preview');
   const reader = new FileReader();
-  reader.onload = (e) => {
-    state.systemSettings.logoKantor = e.target.result;
-    const preview = document.getElementById('ss-logo-preview');
-    if (preview) preview.innerHTML = `<img src="${e.target.result}" style="max-width:100%;max-height:100%;object-fit:contain;">`;
+  reader.onload = async (e) => {
+    if (preview) preview.innerHTML = '<span style="font-size:11px;color:var(--ink-soft);">Mengunggah...</span>';
+    try {
+      const hasil = await callBackendUtama('uploadLogoKantor', { base64Data: e.target.result, mimeType: file.type });
+      if (!hasil.success) throw new Error(hasil.message || 'Gagal mengunggah logo.');
+      state.systemSettings.logoKantor = hasil.url;
+      if (preview) preview.innerHTML = `<img src="${hasil.url}" style="max-width:100%;max-height:100%;object-fit:contain;">`;
+    } catch (err) {
+      if (preview) preview.innerHTML = 'Logo';
+      alert('Gagal mengunggah logo: ' + err.message);
+    }
   };
   reader.readAsDataURL(file);
 }
@@ -2934,24 +2942,9 @@ function renderSystemSettings(embedded){
       <p style="font-size:11px;color:var(--ink-soft);margin:8px 0 0;">Data ini otomatis muncul di bagian metode pembayaran &amp; area tanda tangan pada invoice yang dicetak.</p>
     </div>
 
-    <div class="card" style="margin-bottom:16px;">
-      <div class="section-title" style="font-size:13.5px;">Koneksi Backend (Google Sheets &amp; Apps Script)</div>
-      <p style="font-size:12.5px;color:var(--ink-soft);margin:0 0 10px;">
-        Alamat Web App (<code>WEBAPP_URL</code>) tidak diatur di sini — nilai itu ditulis langsung di source code oleh
-        developer saat proses deployment awal, karena aplikasi butuh alamat tersebut sebelum bisa terhubung ke Sheets sama sekali.
-      </p>
-      <div style="background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:10px 12px;font-family:var(--font-mono);font-size:12px;color:var(--ink-soft);">
-        WEBAPP_URL = "https://script.google.com/macros/s/xxxxxxxxxxxx/exec" &nbsp;<span style="color:var(--gold);">(contoh — dikonfigurasi di file, bukan di halaman ini)</span>
-      </div>
-    </div>
-
     <div class="card">
       <div class="section-title" style="font-size:13.5px;">Pengaturan yang Bisa Diubah Kapan Saja</div>
       <form onsubmit="handleSystemSettingsSubmit(event)">
-
-        <label>ID Folder Google Drive untuk Dokumen Klien</label>
-        <input type="text" id="ss-driveFolderId" value="${s.driveFolderId}" placeholder="Contoh: 1AbCxxxxxxxxxxxxxxxxxxxxxxxxxxxx">
-        <p style="font-size:11px;color:var(--ink-soft);margin:-8px 0 14px;">Salin dari URL folder Drive: drive.google.com/drive/folders/<b>ID_INI</b></p>
 
         <label>Email Akun Google Drive Penyimpanan Dokumen</label>
         <input type="email" id="ss-driveAccountEmail" value="${s.driveAccountEmail}">
@@ -5018,6 +5011,9 @@ async function verifySerialNumber(){
         tipeLisensi: data.tipeLisensi || 'Seumur Hidup',
         berlakuSampai: data.tanggalKadaluarsa || '(Seumur Hidup)',
       };
+      // Aktivasi valid — simpan backend URL kantor ini ke localStorage device ini,
+      // supaya kunjungan berikutnya (refresh, buka tab baru) tidak perlu isi ulang.
+      try { localStorage.setItem('pkp_backend_url', WEBAPP_URL_UTAMA); } catch(e){}
 
       // Serial number valid — sekarang buat akun Superadmin pertama di Sheet KANTOR INI
       // sendiri (bukan di Sheet Penjaga Lisensi). Kalau gagal, tetap lanjut ke Langkah 2
@@ -5144,7 +5140,7 @@ function renderSetupWizard(){
       <input type="number" id="sw-captcha" placeholder="Jawaban Anda" style="margin-bottom:18px;" ${w.loading?'disabled':''}>
       <label style="font-size:12px;color:var(--ink-soft);">Serial Number</label>
       <input type="text" id="sw-serial" placeholder="Contoh: PKP-2026-0001" value="${w.serialNumber}" style="text-align:center;font-family:var(--font-mono);letter-spacing:.05em;" ${w.loading?'disabled':''}>
-      <button class="primary" type="button" onclick="verifySerialNumber()" ${w.loading?'disabled':''}>${w.loading?'<span class="koin-loading-kecil">🪙</span>Memverifikasi...':'Verifikasi'}</button>
+      <button class="primary" type="button" onclick="verifySerialNumber()" ${w.loading?'disabled':''}>${w.loading?'<span class="koin-loading-kecil">🪙</span>Memverifikasi... <span id="loading-timer-detik" style="font-family:var(--font-mono);opacity:.85;">0.0s</span>':'Verifikasi'}</button>
       <p style="font-size:10.5px;color:var(--ink-soft);text-align:center;margin-top:14px;">Belum punya serial number? <a href="https://wa.me/628117879021" target="_blank" style="color:var(--gold);">Hubungi kami</a> untuk berlangganan.</p>`;
   }
 
@@ -5199,14 +5195,14 @@ function renderEmailGerbang(){
   const captcha = pastikanCaptcha('captchaGerbang');
   return `<div class="login-wrap"><div class="login-box">
     ${sealHtml}
-    <div class="login-title">Portal Konsultan Pajak</div>
-    <div class="login-sub">Masukkan email kantor Anda untuk melanjutkan</div>
+    <div class="login-title">${state.systemSettings.namaKantor || 'Portal Konsultan Pajak'}</div>
+    <div class="login-sub">Masukkan email Anda untuk mengecek apakah terdaftar sebagai user di kantor ini</div>
     ${state.error?`<div class="error-msg">${state.error}</div>`:''}
     <form onsubmit="handleEmailGerbangSubmit(event)">
       <label>Email</label><input type="email" id="eg-email" placeholder="nama@kantorpajak.id" value="${state.emailGerbang||''}" required>
       <label>Soal Keamanan: Berapa hasil dari ${captcha.a} + ${captcha.b}?</label>
       <input type="number" id="eg-captcha" placeholder="Jawaban Anda" required>
-      <button class="primary" type="submit" ${state.loading?'disabled':''}>${state.loading?'<span class="koin-loading-kecil">🪙</span>Memeriksa...':'Lanjutkan'}</button>
+      <button class="primary" type="submit" ${state.loading?'disabled':''}>${state.loading?'<span class="koin-loading-kecil">🪙</span>Memeriksa... <span id="loading-timer-detik" style="font-family:var(--font-mono);opacity:.85;">0.0s</span>':'Lanjutkan'}</button>
     </form>
   </div></div>`;
 }
@@ -5292,7 +5288,7 @@ function renderLogin(){
   const captcha = pastikanCaptcha('captchaLogin');
   return `<div class="login-wrap"><div class="login-box">
     ${sealHtml}
-    <div class="login-title">Portal Konsultan Pajak</div>
+    <div class="login-title">${state.systemSettings.namaKantor || 'Portal Konsultan Pajak'}</div>
     <div class="login-sub">Masuk untuk mulai bekerja</div>
     ${state.error?`<div class="error-msg">${state.error}</div>`:''}
     <form onsubmit="handleLoginSubmit(event)">
@@ -5300,7 +5296,7 @@ function renderLogin(){
       <label>Password</label><input type="password" id="f-password" placeholder="Masukkan password" required>
       <label>Soal Keamanan: Berapa hasil dari ${captcha.a} + ${captcha.b}?</label>
       <input type="number" id="f-captcha" placeholder="Jawaban Anda" required>
-      <button class="primary" type="submit" ${state.loading?'disabled':''}>${state.loading?'<span class="koin-loading-kecil">🪙</span>Memeriksa...':'Masuk'}</button>
+      <button class="primary" type="submit" ${state.loading?'disabled':''}>${state.loading?'<span class="koin-loading-kecil">🪙</span>Memeriksa... <span id="loading-timer-detik" style="font-family:var(--font-mono);opacity:.85;">0.0s</span>':'Masuk'}</button>
     </form>
     <div style="text-align:center;margin-top:10px;">
       <span onclick="kembaliKeGerbangEmail()" style="font-size:11.5px;color:var(--ink-soft);cursor:pointer;text-decoration:underline;">Bukan Anda? Ganti email</span>
@@ -5641,14 +5637,13 @@ function render(){
     return;
   }
   if (state.bootErrorType === 'email_lookup') {
-    const modeVerify = state.emailLookupMode === 'verify';
     if (state.emailLookupNotFound){
-      const pesanWA = encodeURIComponent('Halo, saya ingin ' + (modeVerify ? 'aktivasi' : 'menghubungkan') + ' Portal Konsultan Pajak. Email saya: ' + state.emailLookupTried);
+      const pesanWA = encodeURIComponent('Halo, saya ingin menghubungkan Portal Konsultan Pajak. Email saya: ' + state.emailLookupTried);
       app.innerHTML = `<div class="login-wrap"><div class="login-box" style="text-align:center;">
         <div class="seal" style="margin:0 auto 16px;">?</div>
         <div class="login-title" style="font-size:17px;">Email Belum Terdaftar</div>
         <p style="font-size:12.5px;color:var(--ink-soft);line-height:1.7;margin:10px 0 24px;">
-          Email <b style="color:var(--ink);">${state.emailLookupTried}</b> ${modeVerify ? 'tidak ditemukan sebagai pemegang lisensi' : 'belum terhubung ke kantor mana pun'}. Silakan hubungi kami untuk dibantu.
+          Email <b style="color:var(--ink);">${state.emailLookupTried}</b> belum terhubung ke kantor mana pun. Silakan hubungi kami untuk dibantu.
         </p>
         <a href="https://wa.me/628117879021?text=${pesanWA}" target="_blank" class="primary" style="display:inline-block;text-decoration:none;padding:11px 24px;">Hubungi via WhatsApp</a>
         <p style="margin-top:16px;"><span onclick="state.emailLookupNotFound=false; render();" style="font-size:12px;color:var(--gold);cursor:pointer;text-decoration:underline;">&larr; Coba email lain</span></p>
@@ -5657,11 +5652,23 @@ function render(){
     }
     app.innerHTML = `<div class="login-wrap"><div class="login-box" style="text-align:center;">
       <div class="seal" style="margin:0 auto 16px;">KP</div>
-      <div class="login-title" style="font-size:17px;">${modeVerify ? 'Verifikasi Email Pembelian' : 'Selamat Datang'}</div>
-      <p style="font-size:12.5px;color:var(--ink-soft);line-height:1.7;margin:10px 0 20px;">${modeVerify ? 'Masukkan email yang dipakai saat pembelian lisensi, untuk memverifikasi kantor Anda sebelum melanjutkan aktivasi.' : 'Masukkan email yang dipakai saat aktivasi pertama kali kantor Anda, supaya device ini otomatis terhubung ke Portal kantor Anda.'}</p>
-      <label style="font-size:12px;color:var(--ink-soft);display:block;text-align:left;margin-bottom:5px;">Email ${modeVerify?'Pembelian':'Registrasi'}</label>
+      <div class="login-title" style="font-size:17px;">Selamat Datang</div>
+      <p style="font-size:12.5px;color:var(--ink-soft);line-height:1.7;margin:10px 0 20px;">Masukkan email yang dipakai saat pembelian lisensi, supaya device ini otomatis terhubung ke Portal kantor Anda.</p>
+      <label style="font-size:12px;color:var(--ink-soft);display:block;text-align:left;margin-bottom:5px;">Email</label>
       <input type="email" id="input-email-registrasi" placeholder="nama@kantorpajak.id" style="margin-bottom:14px;" ${state.emailLookupLoading?'disabled':''}>
-      <button class="primary" type="button" onclick="cariBackendViaEmail()" ${state.emailLookupLoading?'disabled':''}>${state.emailLookupLoading?'<span class="koin-loading-kecil">🪙</span>Mencari...':'Lanjutkan'}</button>
+      <button class="primary" type="button" onclick="cariBackendViaEmail()" ${state.emailLookupLoading?'disabled':''}>${state.emailLookupLoading?'<span class="koin-loading-kecil">🪙</span>Mencari... <span id="loading-timer-detik" style="font-family:var(--font-mono);opacity:.85;">0.0s</span>':'Lanjutkan'}</button>
+    </div></div>`;
+    return;
+  }
+  if (state.bootErrorType === 'konfigurasi_lisensi') {
+    app.innerHTML = `<div class="login-wrap"><div class="login-box" style="text-align:center;">
+      <div class="seal" style="margin:0 auto 16px;">⚙</div>
+      <div class="login-title" style="font-size:17px;">Konfigurasi Lisensi</div>
+      <p style="font-size:12.5px;color:var(--ink-soft);line-height:1.7;margin:10px 0 20px;">Email Anda terverifikasi sebagai pemegang lisensi. Kalau Anda baru selesai men-setup Google Sheet &amp; Deploy Apps Script, tempel URL Web App hasil Deploy itu di bawah ini.</p>
+      <label style="font-size:12px;color:var(--ink-soft);display:block;text-align:left;margin-bottom:5px;">URL Web App hasil Deploy Anda</label>
+      <input type="text" id="input-url-backend" placeholder="https://script.google.com/macros/s/xxxxx/exec" style="font-family:var(--font-mono);font-size:11.5px;margin-bottom:14px;">
+      <button class="primary" type="button" onclick="lanjutkanKonfigurasiLisensi()">Lanjutkan</button>
+      <p style="margin-top:16px;"><span onclick="state.emailLookupNotFound=false; state.bootErrorType='email_lookup'; render();" style="font-size:12px;color:var(--ink-soft);cursor:pointer;text-decoration:underline;">&larr; Kembali</span></p>
     </div></div>`;
     return;
   }
@@ -5691,8 +5698,12 @@ function render(){
 // Dengan begini, setelah berhasil, address bar browser sudah berisi link
 // LENGKAP yang bisa langsung di-bookmark untuk akses berikutnya.
 // Dipanggil dari tombol "Lanjutkan" di halaman "Selamat Datang" (gerbang email
-// registrasi). Cari backend yang benar lewat email yang dipakai waktu aktivasi
-// pertama kali kantornya — device ini TIDAK perlu tahu URL Apps Script mentah.
+// pembelian). Cari email ini di Sheet Lisensi:
+// - Tidak ketemu sama sekali -> "Email Belum Terdaftar" (hubungi WhatsApp)
+// - Ketemu + backendUrl SUDAH ada -> device ini langsung terhubung (kantor
+//   sudah pernah aktivasi di device lain sebelumnya)
+// - Ketemu + backendUrl BELUM ada -> ini pertama kalinya, arahkan ke layar
+//   "Konfigurasi Lisensi" untuk paste URL backend hasil Deploy kantor sendiri
 async function cariBackendViaEmail(){
   const email = document.getElementById('input-email-registrasi').value.trim().toLowerCase();
   if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)){
@@ -5709,29 +5720,24 @@ async function cariBackendViaEmail(){
     const data = JSON.parse(await res.text());
     state.emailLookupLoading = false;
 
-    const modeDiscover = state.emailLookupMode === 'discover';
-    // Mode 'discover' (device tanpa link sama sekali): WAJIB backendUrl sudah ada.
-    // Mode 'verify' (link ?backend=... sudah ada, kantor belum aktivasi): cukup
-    // email-nya terdaftar di Sheet Lisensi (emailPIC) — backendUrl belum tentu ada.
-    const ditemukan = data.success && (!modeDiscover || data.backendUrl);
-
-    if (ditemukan){
-      state.emailRegistrasiTerverifikasi = true;
-      state.emailRegistrasiInfo = { email, serialNumber: data.serialNumber || '', namaKantor: data.namaKantor || '' };
-      if (modeDiscover){
-        WEBAPP_URL_UTAMA = data.backendUrl;
-        try { localStorage.setItem('pkp_backend_url', data.backendUrl); } catch(e){}
-        state.bootErrorType = null;
-        mulaiAplikasi();
-      } else {
-        // Email terverifikasi sebagai pemegang lisensi — langsung ke halaman
-        // aktivasi, Email & Serial Number sudah otomatis terisi.
-        state.bootErrorType = null;
-        openSetupWizard();
-      }
-    } else {
+    if (!data.success){
       state.emailLookupTried = email;
       state.emailLookupNotFound = true;
+      render();
+      return;
+    }
+
+    state.emailRegistrasiInfo = { email, serialNumber: data.serialNumber || '', namaKantor: data.namaKantor || '' };
+
+    if (data.backendUrl){
+      // Kantor ini sudah pernah aktivasi (di device lain) — langsung terhubung.
+      WEBAPP_URL_UTAMA = data.backendUrl;
+      try { localStorage.setItem('pkp_backend_url', data.backendUrl); } catch(e){}
+      state.bootErrorType = null;
+      mulaiAplikasi();
+    } else {
+      // Baru pertama kali — arahkan ke layar isi URL backend hasil Deploy sendiri.
+      state.bootErrorType = 'konfigurasi_lisensi';
       render();
     }
   } catch (err) {
@@ -5741,11 +5747,25 @@ async function cariBackendViaEmail(){
   }
 }
 
+// Dipanggil dari tombol "Lanjutkan" di layar "Konfigurasi Lisensi" — pembeli
+// paste URL Web App hasil Deploy Apps Script mereka sendiri di sini. URL ini
+// dipakai untuk sisa proses aktivasi (Wizard), dan otomatis tersimpan ke Sheet
+// Lisensi begitu Wizard Step 1 berhasil (lihat lanjutkanWizardSerial()).
+function lanjutkanKonfigurasiLisensi(){
+  const nilai = document.getElementById('input-url-backend').value.trim();
+  if (!nilai || !nilai.startsWith('https://script.google.com/') || !nilai.endsWith('/exec')){
+    alert('URL yang dimasukkan sepertinya belum benar. Pastikan formatnya diawali "https://script.google.com/macros/s/..." dan diakhiri "/exec".');
+    return;
+  }
+  WEBAPP_URL_UTAMA = nilai;
+  state.bootErrorType = null;
+  openSetupWizard();
+}
+
 async function mulaiAplikasi(){
   if (!WEBAPP_URL_UTAMA){
     state.bootLoading = false;
     state.bootErrorType = 'email_lookup';
-    state.emailLookupMode = 'discover';
     render();
     return;
   }
@@ -5770,17 +5790,11 @@ async function mulaiAplikasi(){
     return;
   }
 
-  // Kantor ini BELUM aktivasi (serialNumber kosong) — sebelum masuk ke Wizard,
-  // verifikasi dulu email pembelian ke Sheet Lisensi. Ini mencegah sembarang
-  // orang yang kebetulan punya/menebak link ?backend=... langsung bisa coba
-  // isi Wizard aktivasi, dan sekalian otomatis isi Email & Serial Number-nya.
-  if (!state.systemSettings.serialNumber && !state.emailRegistrasiTerverifikasi){
-    state.bootLoading = false;
-    state.bootErrorType = 'email_lookup';
-    state.emailLookupMode = 'verify';
-    if (window._bootProgressInterval) clearInterval(window._bootProgressInterval);
-    render();
-    return;
+  // Kalau kantor ini belum aktivasi, langsung arahkan ke layar "Aplikasi Belum
+  // Diaktivasi" — tidak perlu minta isi ulang Gerbang Email staff dulu (percuma,
+  // toh ujung-ujungnya diarahkan ke sini juga kalau belum aktivasi).
+  if (!state.systemSettings.serialNumber){
+    state.gatePage = 'ajakanAktivasi';
   }
 
   // Muat matriks akses modul (Administrasi > Modul) SEBELUM login — supaya begitu
@@ -5806,6 +5820,67 @@ async function mulaiAplikasi(){
   if (window._bootProgressInterval) clearInterval(window._bootProgressInterval);
   render();
 }
+// ============================================================
+// ANIMASI WARNA LATAR — tiap kali tombol utama di layar login/gerbang/wizard
+// diklik, warna latar navy berubah perlahan ke warna acak (transisi diatur
+// lewat CSS .login-wrap di atas). Pakai event delegation di document supaya
+// otomatis berlaku untuk SEMUA tombol .primary di dalam .login-box, termasuk
+// yang baru ditambahkan nanti — tidak perlu edit tiap handler satu-satu.
+// ============================================================
+const PALET_WARNA_LATAR_ACAK = ['#1B2A4A','#2C1B4A','#1B4A3A','#4A1B2E','#1B3A4A','#4A3A1B','#2A1B4A','#1B4A46','#4A1B1B','#22345E','#3A1B4A','#1B2E4A'];
+let warnaLatarLoginSaatIni = null;
+function animasikanWarnaLatarLogin(){
+  let warnaBaru;
+  do { warnaBaru = PALET_WARNA_LATAR_ACAK[Math.floor(Math.random() * PALET_WARNA_LATAR_ACAK.length)]; }
+  while (warnaBaru === warnaLatarLoginSaatIni && PALET_WARNA_LATAR_ACAK.length > 1);
+  warnaLatarLoginSaatIni = warnaBaru;
+  // Diset di :root (lewat CSS variable --login-bg), BUKAN inline style langsung
+  // ke .login-wrap — soalnya render() mengganti ulang seluruh innerHTML tiap kali
+  // (termasuk elemen .login-wrap), jadi inline style langsung akan ikut hilang.
+  // CSS variable di :root tidak ikut hilang walau innerHTML di dalamnya diganti.
+  document.documentElement.style.setProperty('--login-bg', warnaBaru);
+}
+// Cek semua kemungkinan flag "sedang loading" yang dipakai di layar-layar login/gerbang/wizard
+function apakahMasihMemprosesLogin(){
+  return !!(state.loading || state.emailLookupLoading || (state.setupWizard && state.setupWizard.loading));
+}
+let intervalWarnaLatar = null;
+function mulaiAnimasiWarnaLatar(){
+  animasikanWarnaLatarLogin(); // ganti warna langsung begitu diklik
+  if (intervalWarnaLatar) return; // sudah ada siklus berjalan, jangan dobel
+  intervalWarnaLatar = setInterval(() => {
+    if (apakahMasihMemprosesLogin()){
+      animasikanWarnaLatarLogin(); // masih proses -> lanjut ke warna berikutnya
+    } else {
+      clearInterval(intervalWarnaLatar); // sudah selesai (berhasil/gagal/pindah layar) -> berhenti
+      intervalWarnaLatar = null;
+    }
+  }, 2200); // sedikit lebih lama dari durasi transisi CSS (2s) supaya tiap transisi sempat selesai mulus dulu
+}
+
+// Timer detik di samping ikon koin — supaya kelihatan persis berapa lama tiap
+// proses (cek email, login, dst) benar-benar makan waktu. Update tiap 100ms
+// langsung ke elemen DOM (bukan lewat render()), supaya angkanya jalan mulus
+// walau render() sendiri jarang dipanggil selama menunggu network.
+let waktuMulaiLoading = null;
+let intervalTimerLoading = null;
+function mulaiTimerLoading(){
+  waktuMulaiLoading = Date.now();
+  if (intervalTimerLoading) return;
+  intervalTimerLoading = setInterval(() => {
+    const el = document.getElementById('loading-timer-detik');
+    if (apakahMasihMemprosesLogin()){
+      if (el) el.textContent = ((Date.now() - waktuMulaiLoading) / 1000).toFixed(1) + 's';
+    } else {
+      clearInterval(intervalTimerLoading);
+      intervalTimerLoading = null;
+    }
+  }, 100);
+}
+document.addEventListener('click', function(ev){
+  if (ev.target.closest('.login-box .primary')) { mulaiAnimasiWarnaLatar(); mulaiTimerLoading(); }
+});
+
 render(); // tampilkan layar "Memuat..." dulu
 mulaiAplikasi();
 </script>
