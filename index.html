@@ -662,7 +662,7 @@ function ambilBackendURLDariLink(){
   }
   try { return localStorage.getItem('pkp_backend_url') || ''; } catch(e){ return ''; }
 }
-const WEBAPP_URL_UTAMA = ambilBackendURLDariLink();
+let WEBAPP_URL_UTAMA = ambilBackendURLDariLink();
 
 async function callBackendUtama(action, payload){
   payload = payload || {};
@@ -826,6 +826,7 @@ const api = {
    ================================================================ */
 const state = { session:null, modules:[], activeModule:null, allModulesMatrix:null, loading:false, error:'',
   bootLoading: true, bootError: null, bootErrorType: null, dialogIdleTampil: false,
+  emailLookupLoading: false, emailLookupNotFound: false, emailLookupTried: '',
   gatePage: 'email', emailGerbang: '',
   sidebarOpen: window.innerWidth > 768,
   userMenuOpen: false,
@@ -5003,7 +5004,7 @@ async function verifySerialNumber(){
     const res = await fetch(WEBAPP_URL_LISENSI, {
       method: 'POST',
       headers: { 'Content-Type': 'text/plain;charset=utf-8' }, // hindari CORS preflight
-      body: JSON.stringify({ action: 'recordLicenseActivation', serialNumber: w.serialNumber, namaAktivator: w.namaAktivator, emailAktivator: w.emailAktivator }),
+      body: JSON.stringify({ action: 'recordLicenseActivation', serialNumber: w.serialNumber, namaAktivator: w.namaAktivator, emailAktivator: w.emailAktivator, backendUrl: WEBAPP_URL_UTAMA }),
     });
     const data = JSON.parse(await res.text());
 
@@ -5637,21 +5638,37 @@ function render(){
     }
     return;
   }
+  if (state.bootErrorType === 'email_lookup') {
+    if (state.emailLookupNotFound){
+      const pesanWA = encodeURIComponent('Halo, saya ingin menghubungkan Portal Konsultan Pajak di device ini. Email registrasi saya: ' + state.emailLookupTried);
+      app.innerHTML = `<div class="login-wrap"><div class="login-box" style="text-align:center;">
+        <div class="seal" style="margin:0 auto 16px;">?</div>
+        <div class="login-title" style="font-size:17px;">Email Belum Terdaftar</div>
+        <p style="font-size:12.5px;color:var(--ink-soft);line-height:1.7;margin:10px 0 24px;">
+          Email <b style="color:var(--ink);">${state.emailLookupTried}</b> belum terhubung ke kantor mana pun. Silakan hubungi kami untuk dibantu.
+        </p>
+        <a href="https://wa.me/628117879021?text=${pesanWA}" target="_blank" class="primary" style="display:inline-block;text-decoration:none;padding:11px 24px;">Hubungi via WhatsApp</a>
+        <p style="margin-top:16px;"><span onclick="state.emailLookupNotFound=false; render();" style="font-size:12px;color:var(--gold);cursor:pointer;text-decoration:underline;">&larr; Coba email lain</span></p>
+      </div></div>`;
+      return;
+    }
+    app.innerHTML = `<div class="login-wrap"><div class="login-box" style="text-align:center;">
+      <div class="seal" style="margin:0 auto 16px;">KP</div>
+      <div class="login-title" style="font-size:17px;">Selamat Datang</div>
+      <p style="font-size:12.5px;color:var(--ink-soft);line-height:1.7;margin:10px 0 20px;">Masukkan email yang dipakai saat aktivasi pertama kali kantor Anda, supaya device ini otomatis terhubung ke Portal kantor Anda.</p>
+      <label style="font-size:12px;color:var(--ink-soft);display:block;text-align:left;margin-bottom:5px;">Email Registrasi</label>
+      <input type="email" id="input-email-registrasi" placeholder="nama@kantorpajak.id" style="margin-bottom:14px;" ${state.emailLookupLoading?'disabled':''}>
+      <button class="primary" type="button" onclick="cariBackendViaEmail()" ${state.emailLookupLoading?'disabled':''}>${state.emailLookupLoading?'<span class="koin-loading-kecil">🪙</span>Mencari...':'Lanjutkan'}</button>
+    </div></div>`;
+    return;
+  }
   if (state.bootError) {
-    const isMissingBackend = state.bootErrorType === 'missing_backend';
     app.innerHTML = `<div class="login-wrap"><div class="login-box" style="text-align:center;">
       <div class="seal" style="margin:0 auto 16px;">!</div>
-      <div class="login-title" style="font-size:17px;">${isMissingBackend ? 'Masukkan Link Backend Anda' : 'Gagal Terhubung ke Server'}</div>
+      <div class="login-title" style="font-size:17px;">Gagal Terhubung ke Server</div>
       <p style="font-size:12.5px;color:var(--ink-soft);line-height:1.7;margin:10px 0 20px;">${state.bootError}</p>
-      ${isMissingBackend ? `
-        <label style="font-size:12px;color:var(--ink-soft);display:block;text-align:left;margin-bottom:5px;">URL Web App hasil Deploy Anda</label>
-        <input type="text" id="input-backend-manual" placeholder="https://script.google.com/macros/s/xxxxx/exec" style="font-family:var(--font-mono);font-size:11.5px;margin-bottom:14px;">
-        <button class="primary" type="button" onclick="lanjutkanDenganBackendManual()">Lanjutkan</button>
-        <p style="font-size:10.5px;color:var(--ink-soft);margin-top:12px;">Setelah berhasil, simpan (bookmark) link di address bar browser Anda — supaya lain kali tidak perlu isi ulang.</p>
-      ` : `
-        <p style="font-size:11.5px;color:var(--ink-soft);margin-bottom:18px;">Periksa koneksi internet Anda, lalu coba lagi.</p>
-        <button class="primary" type="button" onclick="mulaiAplikasi()">Coba Lagi</button>
-      `}
+      <p style="font-size:11.5px;color:var(--ink-soft);margin-bottom:18px;">Periksa koneksi internet Anda, lalu coba lagi.</p>
+      <button class="primary" type="button" onclick="mulaiAplikasi()">Coba Lagi</button>
     </div></div>`;
     return;
   }
@@ -5670,21 +5687,45 @@ function render(){
 // susun ulang URL halaman ini supaya punya ?backend=..., lalu muat ulang.
 // Dengan begini, setelah berhasil, address bar browser sudah berisi link
 // LENGKAP yang bisa langsung di-bookmark untuk akses berikutnya.
-function lanjutkanDenganBackendManual(){
-  const nilai = document.getElementById('input-backend-manual').value.trim();
-  if (!nilai || !nilai.startsWith('https://script.google.com/')){
-    alert('URL yang dimasukkan sepertinya belum benar. Pastikan formatnya diawali "https://script.google.com/macros/s/..." dan diakhiri "/exec".');
+// Dipanggil dari tombol "Lanjutkan" di halaman "Selamat Datang" (gerbang email
+// registrasi). Cari backend yang benar lewat email yang dipakai waktu aktivasi
+// pertama kali kantornya — device ini TIDAK perlu tahu URL Apps Script mentah.
+async function cariBackendViaEmail(){
+  const email = document.getElementById('input-email-registrasi').value.trim().toLowerCase();
+  if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)){
+    alert('Masukkan email yang valid.');
     return;
   }
-  const urlBaru = window.location.pathname + '?backend=' + encodeURIComponent(nilai);
-  window.location.href = urlBaru;
+  state.emailLookupLoading = true; render();
+  try {
+    const res = await fetch(WEBAPP_URL_LISENSI, {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain;charset=utf-8' }, // hindari CORS preflight
+      body: JSON.stringify({ action: 'getBackendUrlByEmail', email }),
+    });
+    const data = JSON.parse(await res.text());
+    state.emailLookupLoading = false;
+    if (data.success && data.backendUrl){
+      WEBAPP_URL_UTAMA = data.backendUrl;
+      try { localStorage.setItem('pkp_backend_url', data.backendUrl); } catch(e){}
+      state.bootErrorType = null;
+      mulaiAplikasi();
+    } else {
+      state.emailLookupTried = email;
+      state.emailLookupNotFound = true;
+      render();
+    }
+  } catch (err) {
+    state.emailLookupLoading = false;
+    alert('Gagal memeriksa email: ' + err.message + '. Periksa koneksi internet lalu coba lagi.');
+    render();
+  }
 }
 
 async function mulaiAplikasi(){
   if (!WEBAPP_URL_UTAMA){
     state.bootLoading = false;
-    state.bootError = 'Link ini belum lengkap — bagian "?backend=..." di URL tidak ditemukan. Kalau Anda baru selesai Deploy Apps Script, tempel URL hasil Deploy itu di bawah ini.';
-    state.bootErrorType = 'missing_backend';
+    state.bootErrorType = 'email_lookup';
     render();
     return;
   }
