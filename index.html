@@ -280,6 +280,7 @@
 
     .pagination-row{ flex-direction:column; align-items:flex-start; gap:10px; }
     .topbar-online-list{ display:none; }
+    .topbar-session-timers{ display:none; }
     .chat-popup-panel{ left:12px; right:12px; width:auto; bottom:70px; }
     .btn-label{ display:none; }
     .btn-secondary{ padding:8px 10px; }
@@ -951,6 +952,7 @@ async function handleLoginSubmit(ev){
     logActivity('Login', `${result.user.nama} masuk ke sistem`);
     try { sessionStorage.setItem('portalSession', JSON.stringify(result.user)); } catch(e){ /* kalau browser blokir storage, tidak masalah — login tetap jalan normal */ }
     mulaiPengawasanIdle();
+    mulaiTimerTopbar();
   } else {
     state.error = result.message;
     buatUlangCaptcha('captchaLogin');
@@ -969,12 +971,43 @@ function fillDemo(email){
 let _idleTimer = null;
 let _idleCountdownInterval = null;
 let _idleCountdownSisa = 15;
+let waktuIdleTerakhirReset = Date.now(); // dipakai timer countdown di topbar
+let waktuLoginBerhasil = null; // dipakai timer durasi sesi di topbar
+let _topbarTimerInterval = null;
 
 function mulaiPengawasanIdle(){
   clearTimeout(_idleTimer);
   if (!state.session) return; // cuma aktif kalau sedang login
+  waktuIdleTerakhirReset = Date.now();
   const menit = Number(state.systemSettings.waktuTimeoutMenit) || 15;
   _idleTimer = setTimeout(() => { tampilkanDialogIdle(); }, menit * 60 * 1000);
+}
+// Timer di topbar (durasi sesi + hitung mundur idle) — update tiap detik,
+// langsung ke elemen DOM (bukan lewat render()) supaya jalan mulus dan tidak
+// perlu render ulang seluruh halaman tiap detik.
+function formatDurasiSesi(detik){
+  const j = Math.floor(detik/3600), m = Math.floor((detik%3600)/60), d = detik%60;
+  return String(j).padStart(2,'0')+':'+String(m).padStart(2,'0')+':'+String(d).padStart(2,'0');
+}
+function mulaiTimerTopbar(){
+  waktuLoginBerhasil = Date.now();
+  clearInterval(_topbarTimerInterval);
+  _topbarTimerInterval = setInterval(() => {
+    if (!state.session){ clearInterval(_topbarTimerInterval); return; }
+    const elDurasi = document.getElementById('topbar-durasi-sesi');
+    if (elDurasi) elDurasi.textContent = formatDurasiSesi(Math.floor((Date.now()-waktuLoginBerhasil)/1000));
+
+    const elIdle = document.getElementById('topbar-countdown-idle');
+    if (elIdle){
+      if (state.dialogIdleTampil){
+        elIdle.textContent = '00:00';
+      } else {
+        const menit = Number(state.systemSettings.waktuTimeoutMenit) || 15;
+        const sisaDetik = Math.max(0, (menit*60) - Math.floor((Date.now()-waktuIdleTerakhirReset)/1000));
+        elIdle.textContent = String(Math.floor(sisaDetik/60)).padStart(2,'0')+':'+String(sisaDetik%60).padStart(2,'0');
+      }
+    }
+  }, 1000);
 }
 function resetIdleTimer(){
   if (state.session && !state.dialogIdleTampil) mulaiPengawasanIdle();
@@ -1031,6 +1064,7 @@ function handleLogout(){
   try { sessionStorage.removeItem('portalSession'); } catch(e){}
   clearTimeout(_idleTimer);
   clearInterval(_idleCountdownInterval);
+  clearInterval(_topbarTimerInterval);
   hentikanPollingChat();
   render();
 }
@@ -5448,6 +5482,10 @@ function renderTopbar(){
     <button class="hamburger-btn" onclick="toggleSidebar()" title="Tampilkan/sembunyikan menu">&#9776;</button>
     <div style="flex:1;"></div>
     <div class="topbar-right">
+      <div class="topbar-session-timers" style="display:flex;gap:14px;align-items:center;font-family:var(--font-mono);font-size:11.5px;color:rgba(255,255,255,.65);margin-right:6px;" title="Durasi sesi login • Hitung mundur otomatis logout">
+        <span>⏱ <span id="topbar-durasi-sesi">00:00:00</span></span>
+        <span>⏳ <span id="topbar-countdown-idle" style="color:var(--gold-soft);">--:--</span></span>
+      </div>
       <button class="topbar-icon-btn" onclick="toggleChatPopup()" title="Chat">
         &#128172;${chatCount ? `<span class="topbar-badge">${chatCount}</span>` : ''}
       </button>
@@ -5822,6 +5860,7 @@ async function mulaiAplikasi(){
       state.modules = api._modulesForRole(user.role);
       state.activeModule = state.modules[0] ? state.modules[0].id : null;
       mulaiPengawasanIdle();
+      mulaiTimerTopbar();
     }
   } catch (err) { /* kalau gagal pulihkan sesi, biarkan lanjut ke alur login normal */ }
 
