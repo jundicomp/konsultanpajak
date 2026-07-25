@@ -826,8 +826,8 @@ const api = {
    ================================================================ */
 const state = { session:null, modules:[], activeModule:null, allModulesMatrix:null, loading:false, error:'',
   bootLoading: true, bootError: null, bootErrorType: null, dialogIdleTampil: false,
-  emailLookupLoading: false, emailLookupNotFound: false, emailLookupTried: '',
-  emailRegistrasiInfo: null,
+  emailLookupLoading: false, emailLookupNotFound: false, emailLookupTried: '', emailLookupMode: 'discover',
+  emailRegistrasiTerverifikasi: false, emailRegistrasiInfo: null,
   gatePage: 'email', emailGerbang: '',
   sidebarOpen: window.innerWidth > 768,
   userMenuOpen: false,
@@ -5018,9 +5018,6 @@ async function verifySerialNumber(){
         tipeLisensi: data.tipeLisensi || 'Seumur Hidup',
         berlakuSampai: data.tanggalKadaluarsa || '(Seumur Hidup)',
       };
-      // Aktivasi valid — simpan backend URL kantor ini ke localStorage device ini,
-      // supaya kunjungan berikutnya (refresh, buka tab baru) tidak perlu isi ulang.
-      try { localStorage.setItem('pkp_backend_url', WEBAPP_URL_UTAMA); } catch(e){}
 
       // Serial number valid — sekarang buat akun Superadmin pertama di Sheet KANTOR INI
       // sendiri (bukan di Sheet Penjaga Lisensi). Kalau gagal, tetap lanjut ke Langkah 2
@@ -5644,13 +5641,14 @@ function render(){
     return;
   }
   if (state.bootErrorType === 'email_lookup') {
+    const modeVerify = state.emailLookupMode === 'verify';
     if (state.emailLookupNotFound){
-      const pesanWA = encodeURIComponent('Halo, saya ingin menghubungkan Portal Konsultan Pajak. Email saya: ' + state.emailLookupTried);
+      const pesanWA = encodeURIComponent('Halo, saya ingin ' + (modeVerify ? 'aktivasi' : 'menghubungkan') + ' Portal Konsultan Pajak. Email saya: ' + state.emailLookupTried);
       app.innerHTML = `<div class="login-wrap"><div class="login-box" style="text-align:center;">
         <div class="seal" style="margin:0 auto 16px;">?</div>
         <div class="login-title" style="font-size:17px;">Email Belum Terdaftar</div>
         <p style="font-size:12.5px;color:var(--ink-soft);line-height:1.7;margin:10px 0 24px;">
-          Email <b style="color:var(--ink);">${state.emailLookupTried}</b> belum terhubung ke kantor mana pun. Silakan hubungi kami untuk dibantu.
+          Email <b style="color:var(--ink);">${state.emailLookupTried}</b> ${modeVerify ? 'tidak ditemukan sebagai pemegang lisensi' : 'belum terhubung ke kantor mana pun'}. Silakan hubungi kami untuk dibantu.
         </p>
         <a href="https://wa.me/628117879021?text=${pesanWA}" target="_blank" class="primary" style="display:inline-block;text-decoration:none;padding:11px 24px;">Hubungi via WhatsApp</a>
         <p style="margin-top:16px;"><span onclick="state.emailLookupNotFound=false; render();" style="font-size:12px;color:var(--gold);cursor:pointer;text-decoration:underline;">&larr; Coba email lain</span></p>
@@ -5659,23 +5657,11 @@ function render(){
     }
     app.innerHTML = `<div class="login-wrap"><div class="login-box" style="text-align:center;">
       <div class="seal" style="margin:0 auto 16px;">KP</div>
-      <div class="login-title" style="font-size:17px;">Selamat Datang</div>
-      <p style="font-size:12.5px;color:var(--ink-soft);line-height:1.7;margin:10px 0 20px;">Masukkan email yang dipakai saat pembelian lisensi, supaya device ini otomatis terhubung ke Portal kantor Anda.</p>
-      <label style="font-size:12px;color:var(--ink-soft);display:block;text-align:left;margin-bottom:5px;">Email</label>
+      <div class="login-title" style="font-size:17px;">${modeVerify ? 'Verifikasi Email Pembelian' : 'Selamat Datang'}</div>
+      <p style="font-size:12.5px;color:var(--ink-soft);line-height:1.7;margin:10px 0 20px;">${modeVerify ? 'Masukkan email yang dipakai saat pembelian lisensi, untuk memverifikasi kantor Anda sebelum melanjutkan aktivasi.' : 'Masukkan email yang dipakai saat aktivasi pertama kali kantor Anda, supaya device ini otomatis terhubung ke Portal kantor Anda.'}</p>
+      <label style="font-size:12px;color:var(--ink-soft);display:block;text-align:left;margin-bottom:5px;">Email ${modeVerify?'Pembelian':'Registrasi'}</label>
       <input type="email" id="input-email-registrasi" placeholder="nama@kantorpajak.id" style="margin-bottom:14px;" ${state.emailLookupLoading?'disabled':''}>
       <button class="primary" type="button" onclick="cariBackendViaEmail()" ${state.emailLookupLoading?'disabled':''}>${state.emailLookupLoading?'<span class="koin-loading-kecil">🪙</span>Mencari...':'Lanjutkan'}</button>
-    </div></div>`;
-    return;
-  }
-  if (state.bootErrorType === 'konfigurasi_lisensi') {
-    app.innerHTML = `<div class="login-wrap"><div class="login-box" style="text-align:center;">
-      <div class="seal" style="margin:0 auto 16px;">⚙</div>
-      <div class="login-title" style="font-size:17px;">Konfigurasi Lisensi</div>
-      <p style="font-size:12.5px;color:var(--ink-soft);line-height:1.7;margin:10px 0 20px;">Email Anda terverifikasi sebagai pemegang lisensi. Kalau Anda baru selesai men-setup Google Sheet &amp; Deploy Apps Script, tempel URL Web App hasil Deploy itu di bawah ini.</p>
-      <label style="font-size:12px;color:var(--ink-soft);display:block;text-align:left;margin-bottom:5px;">URL Web App hasil Deploy Anda</label>
-      <input type="text" id="input-url-backend" placeholder="https://script.google.com/macros/s/xxxxx/exec" style="font-family:var(--font-mono);font-size:11.5px;margin-bottom:14px;">
-      <button class="primary" type="button" onclick="lanjutkanKonfigurasiLisensi()">Lanjutkan</button>
-      <p style="margin-top:16px;"><span onclick="state.emailLookupNotFound=false; state.bootErrorType='email_lookup'; render();" style="font-size:12px;color:var(--ink-soft);cursor:pointer;text-decoration:underline;">&larr; Kembali</span></p>
     </div></div>`;
     return;
   }
@@ -5705,12 +5691,8 @@ function render(){
 // Dengan begini, setelah berhasil, address bar browser sudah berisi link
 // LENGKAP yang bisa langsung di-bookmark untuk akses berikutnya.
 // Dipanggil dari tombol "Lanjutkan" di halaman "Selamat Datang" (gerbang email
-// pembelian). Cari email ini di Sheet Lisensi:
-// - Tidak ketemu sama sekali -> "Email Belum Terdaftar" (hubungi WhatsApp)
-// - Ketemu + backendUrl SUDAH ada -> device ini langsung terhubung (kantor
-//   sudah pernah aktivasi di device lain sebelumnya)
-// - Ketemu + backendUrl BELUM ada -> ini pertama kalinya, arahkan ke layar
-//   "Konfigurasi Lisensi" untuk paste URL backend hasil Deploy kantor sendiri
+// registrasi). Cari backend yang benar lewat email yang dipakai waktu aktivasi
+// pertama kali kantornya — device ini TIDAK perlu tahu URL Apps Script mentah.
 async function cariBackendViaEmail(){
   const email = document.getElementById('input-email-registrasi').value.trim().toLowerCase();
   if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)){
@@ -5727,24 +5709,29 @@ async function cariBackendViaEmail(){
     const data = JSON.parse(await res.text());
     state.emailLookupLoading = false;
 
-    if (!data.success){
+    const modeDiscover = state.emailLookupMode === 'discover';
+    // Mode 'discover' (device tanpa link sama sekali): WAJIB backendUrl sudah ada.
+    // Mode 'verify' (link ?backend=... sudah ada, kantor belum aktivasi): cukup
+    // email-nya terdaftar di Sheet Lisensi (emailPIC) — backendUrl belum tentu ada.
+    const ditemukan = data.success && (!modeDiscover || data.backendUrl);
+
+    if (ditemukan){
+      state.emailRegistrasiTerverifikasi = true;
+      state.emailRegistrasiInfo = { email, serialNumber: data.serialNumber || '', namaKantor: data.namaKantor || '' };
+      if (modeDiscover){
+        WEBAPP_URL_UTAMA = data.backendUrl;
+        try { localStorage.setItem('pkp_backend_url', data.backendUrl); } catch(e){}
+        state.bootErrorType = null;
+        mulaiAplikasi();
+      } else {
+        // Email terverifikasi sebagai pemegang lisensi — langsung ke halaman
+        // aktivasi, Email & Serial Number sudah otomatis terisi.
+        state.bootErrorType = null;
+        openSetupWizard();
+      }
+    } else {
       state.emailLookupTried = email;
       state.emailLookupNotFound = true;
-      render();
-      return;
-    }
-
-    state.emailRegistrasiInfo = { email, serialNumber: data.serialNumber || '', namaKantor: data.namaKantor || '' };
-
-    if (data.backendUrl){
-      // Kantor ini sudah pernah aktivasi (di device lain) — langsung terhubung.
-      WEBAPP_URL_UTAMA = data.backendUrl;
-      try { localStorage.setItem('pkp_backend_url', data.backendUrl); } catch(e){}
-      state.bootErrorType = null;
-      mulaiAplikasi();
-    } else {
-      // Baru pertama kali — arahkan ke layar isi URL backend hasil Deploy sendiri.
-      state.bootErrorType = 'konfigurasi_lisensi';
       render();
     }
   } catch (err) {
@@ -5754,25 +5741,11 @@ async function cariBackendViaEmail(){
   }
 }
 
-// Dipanggil dari tombol "Lanjutkan" di layar "Konfigurasi Lisensi" — pembeli
-// paste URL Web App hasil Deploy Apps Script mereka sendiri di sini. URL ini
-// dipakai untuk sisa proses aktivasi (Wizard), dan otomatis tersimpan ke Sheet
-// Lisensi begitu Wizard Step 1 berhasil (lihat lanjutkanWizardSerial()).
-function lanjutkanKonfigurasiLisensi(){
-  const nilai = document.getElementById('input-url-backend').value.trim();
-  if (!nilai || !nilai.startsWith('https://script.google.com/') || !nilai.endsWith('/exec')){
-    alert('URL yang dimasukkan sepertinya belum benar. Pastikan formatnya diawali "https://script.google.com/macros/s/..." dan diakhiri "/exec".');
-    return;
-  }
-  WEBAPP_URL_UTAMA = nilai;
-  state.bootErrorType = null;
-  openSetupWizard();
-}
-
 async function mulaiAplikasi(){
   if (!WEBAPP_URL_UTAMA){
     state.bootLoading = false;
     state.bootErrorType = 'email_lookup';
+    state.emailLookupMode = 'discover';
     render();
     return;
   }
@@ -5797,11 +5770,17 @@ async function mulaiAplikasi(){
     return;
   }
 
-  // Kalau kantor ini belum aktivasi, langsung arahkan ke layar "Aplikasi Belum
-  // Diaktivasi" — tidak perlu minta isi ulang Gerbang Email staff dulu (percuma,
-  // toh ujung-ujungnya diarahkan ke sini juga kalau belum aktivasi).
-  if (!state.systemSettings.serialNumber){
-    state.gatePage = 'ajakanAktivasi';
+  // Kantor ini BELUM aktivasi (serialNumber kosong) — sebelum masuk ke Wizard,
+  // verifikasi dulu email pembelian ke Sheet Lisensi. Ini mencegah sembarang
+  // orang yang kebetulan punya/menebak link ?backend=... langsung bisa coba
+  // isi Wizard aktivasi, dan sekalian otomatis isi Email & Serial Number-nya.
+  if (!state.systemSettings.serialNumber && !state.emailRegistrasiTerverifikasi){
+    state.bootLoading = false;
+    state.bootErrorType = 'email_lookup';
+    state.emailLookupMode = 'verify';
+    if (window._bootProgressInterval) clearInterval(window._bootProgressInterval);
+    render();
+    return;
   }
 
   // Muat matriks akses modul (Administrasi > Modul) SEBELUM login — supaya begitu
