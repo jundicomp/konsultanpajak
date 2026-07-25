@@ -61,7 +61,7 @@
   .demo-row:hover{color:var(--navy);}
 
   /* ---- SHELL ---- */
-  #sidebar{width:250px;background:var(--navy);color:#EDEEF2;flex-shrink:0;display:flex;flex-direction:column;padding:20px 14px;transition:width .2s ease, padding .2s ease;overflow:hidden;}
+  #sidebar{width:250px;background:var(--sidebar-bg, var(--navy));color:#EDEEF2;flex-shrink:0;display:flex;flex-direction:column;padding:20px 14px;transition:width .2s ease, padding .2s ease, background-color 1s ease;overflow:hidden;}
   #sidebar.collapsed{width:0;padding:0;border:none;}
   .hamburger-btn{width:38px;height:38px;border-radius:8px;background:var(--navy);color:#fff;border:none;cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:17px;flex-shrink:0;}
   .hamburger-btn:hover{background:var(--navy-2);}
@@ -165,6 +165,18 @@
   .topbar-online-chip .dot{position:absolute;bottom:-1px;right:-1px;width:8px;height:8px;border-radius:50%;background:#2ED573;border:1.5px solid var(--navy);}
   .topbar-online-chip .nm{color:#EDEEF2;font-size:12px;font-weight:500;white-space:nowrap;}
   .topbar-right{display:flex;align-items:center;gap:10px;flex-shrink:0;}
+  .topbar-quote-wrap{ flex:1; overflow:hidden; position:relative; height:100%; display:flex; align-items:center; margin:0 14px; min-width:0; }
+  #topbar-kutipan-text{
+    white-space:nowrap; display:inline-block; position:relative;
+    animation-name: geserKutipan; animation-timing-function:linear; animation-iteration-count:1; animation-fill-mode:forwards;
+    color:#FDF6E3; font-family:var(--font-display); font-style:italic; font-weight:500; font-size:13.5px; letter-spacing:.2px;
+    text-shadow:0 0 10px rgba(184,134,43,.35);
+  }
+  @keyframes geserKutipan{
+    from { transform: translateX(100vw); }
+    to   { transform: translateX(-100%); }
+  }
+  @media (max-width:768px){ .topbar-quote-wrap{ display:none; } }
   .topbar-icon-btn{position:relative;width:38px;height:38px;border-radius:50%;background:rgba(255,255,255,.08);display:flex;align-items:center;justify-content:center;cursor:pointer;color:#fff;font-size:17px;flex-shrink:0;border:none;transition:background .15s;}
   .topbar-icon-btn:hover{background:rgba(255,255,255,.18);}
   .topbar-badge{position:absolute;top:-3px;right:-3px;background:var(--danger);color:#ffffff;font-size:10px;font-weight:700;border-radius:10px;min-width:16px;height:16px;display:flex;align-items:center;justify-content:center;padding:0 4px;line-height:1;}
@@ -953,6 +965,7 @@ async function handleLoginSubmit(ev){
     try { sessionStorage.setItem('portalSession', JSON.stringify(result.user)); } catch(e){ /* kalau browser blokir storage, tidak masalah — login tetap jalan normal */ }
     mulaiPengawasanIdle();
     mulaiTimerTopbar();
+    tampilkanKutipanBaru();
   } else {
     state.error = result.message;
     buatUlangCaptcha('captchaLogin');
@@ -974,6 +987,72 @@ let _idleCountdownSisa = 15;
 let waktuIdleTerakhirReset = Date.now(); // dipakai timer countdown di topbar
 let waktuLoginBerhasil = null; // dipakai timer durasi sesi di topbar
 let _topbarTimerInterval = null;
+
+// ============================================================
+// KUTIPAN MOTIVASI BERJALAN — daftar tersimpan LOKAL (bukan dipanggil dari
+// internet tiap kali muncul), supaya TIDAK ADA panggilan jaringan tambahan
+// sama sekali untuk fitur ini — nol pengaruh ke kecepatan aplikasi, dan
+// tidak akan pernah gagal gara-gara API kutipan pihak ketiga down/berubah.
+// ============================================================
+const KUTIPAN_MOTIVASI = [
+  'Kerja keras mengalahkan bakat ketika bakat tidak mau bekerja keras.',
+  'Kesuksesan adalah hasil dari kesempurnaan kecil yang dilakukan berulang-ulang.',
+  'Jangan takut gagal, takutlah tidak pernah mencoba.',
+  'Disiplin adalah jembatan antara tujuan dan pencapaian. — Jim Rohn',
+  'Waktu adalah uang, tapi kepercayaan klien adalah segalanya.',
+  'Ketekunan adalah kunci yang membuka pintu kesuksesan.',
+  'Setiap ahli dulunya adalah pemula.',
+  'Kegagalan adalah guru terbaik dalam perjalanan menuju sukses.',
+  'Fokus pada progres, bukan kesempurnaan.',
+  'Rezeki tidak akan tertukar, kerja saja yang jujur dan tekun.',
+  'Hari ini kerja keras, esok menuai hasil.',
+  'Integritas adalah melakukan hal yang benar, bahkan saat tidak ada yang melihat. — C.S. Lewis',
+  'Belajar dari kemarin, hidup untuk hari ini, berharap untuk esok. — Albert Einstein',
+  'Yang penting bukan seberapa cepat kau berjalan, tapi jangan pernah berhenti.',
+  'Kesabaran adalah kunci dari segala kemudahan.',
+  'Detail kecil hari ini adalah pondasi kesuksesan besar esok hari.',
+  'Ketelitian adalah bentuk penghormatan kepada pekerjaan sendiri.',
+  'Semua yang besar dimulai dari langkah yang kecil.',
+  'Konsisten itu lebih berharga daripada sempurna.',
+  'Kepatuhan pajak yang tertib adalah bentuk cinta pada negeri.',
+  'Kejujuran dalam pembukuan adalah fondasi kepercayaan klien.',
+  'Bekerja cerdas dimulai dari bekerja rapi.',
+  'Klien yang puas adalah promosi terbaik.',
+  'Amanah adalah aset paling berharga seorang konsultan.',
+  'Ilmu yang paling bermanfaat adalah ilmu yang diamalkan.',
+  'Ketepatan waktu adalah tanda profesionalisme.',
+  'Setiap laporan yang rapi adalah cerminan dedikasi.',
+  'Kualitas bukan sebuah tindakan, itu adalah kebiasaan. — Aristoteles',
+  'Hari yang baik selalu dimulai dari niat yang baik.',
+  'Kepercayaan dibangun bertahun-tahun, runtuh dalam sedetik — jaga selalu.',
+  'Sukses adalah persiapan yang bertemu kesempatan.',
+  'Jangan menunda pekerjaan hari ini sampai besok.',
+  'Kerja keras tidak pernah mengkhianati hasil.',
+];
+let kutipanIndexTerakhir = -1;
+let kutipanAktifSaatIni = KUTIPAN_MOTIVASI[0];
+let kutipanDurasiSaatIni = 14;
+let waktuKutipanMulai = Date.now();
+function tampilkanKutipanBaru(){
+  let idx;
+  do { idx = Math.floor(Math.random() * KUTIPAN_MOTIVASI.length); }
+  while (idx === kutipanIndexTerakhir && KUTIPAN_MOTIVASI.length > 1);
+  kutipanIndexTerakhir = idx;
+  kutipanAktifSaatIni = KUTIPAN_MOTIVASI[idx];
+  kutipanDurasiSaatIni = Math.max(20, kutipanAktifSaatIni.length * 0.26); // kecepatan diturunkan setengahnya (durasi 2x lipat)
+  waktuKutipanMulai = Date.now();
+  const el = document.getElementById('topbar-kutipan-text');
+  if (el){
+    el.textContent = kutipanAktifSaatIni;
+    el.style.animation = 'none';
+    void el.offsetWidth; // paksa reflow supaya animasi benar-benar restart dari awal
+    el.style.animation = `geserKutipan ${kutipanDurasiSaatIni}s linear forwards`;
+  }
+}
+// Begitu 1 kutipan selesai bergeser penuh, otomatis ganti ke kutipan random berikutnya
+document.addEventListener('animationend', function(ev){
+  if (ev.target && ev.target.id === 'topbar-kutipan-text') tampilkanKutipanBaru();
+});
 
 function mulaiPengawasanIdle(){
   clearTimeout(_idleTimer);
@@ -5480,7 +5559,9 @@ function renderTopbar(){
 
   return `<div class="topbar">
     <button class="hamburger-btn" onclick="toggleSidebar()" title="Tampilkan/sembunyikan menu">&#9776;</button>
-    <div style="flex:1;"></div>
+    <div class="topbar-quote-wrap">
+      <span id="topbar-kutipan-text" style="animation-duration:${kutipanDurasiSaatIni}s;animation-delay:-${((Date.now()-waktuKutipanMulai)/1000).toFixed(2)}s;">${kutipanAktifSaatIni}</span>
+    </div>
     <div class="topbar-right">
       <div class="topbar-session-timers" style="display:flex;gap:14px;align-items:center;font-family:var(--font-mono);font-size:11.5px;color:rgba(255,255,255,.65);margin-right:6px;" title="Durasi sesi login • Hitung mundur otomatis logout">
         <span>⏱ <span id="topbar-durasi-sesi">00:00:00</span></span>
@@ -5649,7 +5730,7 @@ function renderShell(){
   <div class="body-row">
     ${backdropHtml}
     <aside id="sidebar" class="${sidebarClass}">
-      <div class="brand">${sealHtml}<div><div class="brand-name">${s.namaKantor || 'Portal Konsultan Pajak'}</div><div class="brand-sub">KONSULTAN PAJAK</div></div></div>
+      <div class="brand" onclick="acakWarnaSidebar()">${sealHtml}<div><div class="brand-name">${s.namaKantor || 'Portal Konsultan Pajak'}</div><div class="brand-sub">KONSULTAN PAJAK</div></div></div>
       <div class="nav-section-title">Menu</div>
       <nav>${navItems || '<div style="padding:10px;font-size:12px;color:#9AA4BB;">Tidak ada modul aktif</div>'}</nav>
       <div class="sidebar-footer">${getUpdateTerakhir() ? `Update Terbaru: ${getUpdateTerakhir()}<br>` : ''}&copy; 2026 Jundezain</div>
@@ -5861,6 +5942,7 @@ async function mulaiAplikasi(){
       state.activeModule = state.modules[0] ? state.modules[0].id : null;
       mulaiPengawasanIdle();
       mulaiTimerTopbar();
+      tampilkanKutipanBaru();
     }
   } catch (err) { /* kalau gagal pulihkan sesi, biarkan lanjut ke alur login normal */ }
 
@@ -5876,6 +5958,20 @@ async function mulaiAplikasi(){
 // yang baru ditambahkan nanti — tidak perlu edit tiap handler satu-satu.
 // ============================================================
 const PALET_WARNA_LATAR_ACAK = ['#1B2A4A','#2C1B4A','#1B4A3A','#4A1B2E','#1B3A4A','#4A3A1B','#2A1B4A','#1B4A46','#4A1B1B','#22345E','#3A1B4A','#1B2E4A'];
+
+// Easter egg tersembunyi — klik area logo/nama kantor di sidebar untuk ganti
+// warna latar sidebar secara acak. Sengaja TIDAK ada indikasi visual apa pun
+// (tidak ada cursor:pointer, tidak ada hover effect) — supaya benar-benar jadi
+// kejutan kecil yang cuma ketemu kalau iseng klik di situ.
+let warnaSidebarSaatIni = null;
+function acakWarnaSidebar(){
+  let warnaBaru;
+  do { warnaBaru = PALET_WARNA_LATAR_ACAK[Math.floor(Math.random() * PALET_WARNA_LATAR_ACAK.length)]; }
+  while (warnaBaru === warnaSidebarSaatIni && PALET_WARNA_LATAR_ACAK.length > 1);
+  warnaSidebarSaatIni = warnaBaru;
+  document.documentElement.style.setProperty('--sidebar-bg', warnaBaru);
+}
+
 let warnaLatarLoginSaatIni = null;
 function animasikanWarnaLatarLogin(){
   let warnaBaru;
