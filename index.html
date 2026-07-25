@@ -757,15 +757,24 @@ async function muatUlangLogAktivitas(){
 // Muat SEMUA data modul ke memori — dipanggil setelah login sungguhan
 // MAUPUN saat memulihkan sesi dari sessionStorage (refresh halaman).
 async function muatSemuaDataAplikasi(email){
-  try { await muatUlangDaftarUser(email); } catch(e){}
-  try { await muatUlangDaftarKlien(); } catch(e){}
-  try { await muatUlangDaftarPekerjaan(); } catch(e){}
-  try { await muatUlangDaftarReminder(); } catch(e){}
-  try { await muatUlangDaftarInvoice(); } catch(e){}
-  try { await muatUlangDaftarDokumen(); } catch(e){}
-  try { await muatUlangCatatanKalender(); } catch(e){}
-  try { await muatUlangPesan(); } catch(e){}
-  try { await muatUlangLogAktivitas(); } catch(e){}
+  // PARALEL (bukan satu-satu berurutan) — tiap panggilan ke Apps Script makan
+  // waktu ~1-2.5 detik sendiri-sendiri. Kalau dipanggil berurutan (await demi
+  // await), 9 panggilan bisa menumpuk jadi 20+ detik total. Dengan paralel,
+  // totalnya cuma setara 1 panggilan PALING LAMBAT, bukan jumlah semuanya.
+  // Promise.allSettled dipakai (bukan Promise.all) supaya kalau salah satu
+  // gagal, yang lain tetap lanjut selesai — sama seperti try/catch terpisah
+  // yang dipakai sebelumnya per pemanggilan.
+  await Promise.allSettled([
+    muatUlangDaftarUser(email),
+    muatUlangDaftarKlien(),
+    muatUlangDaftarPekerjaan(),
+    muatUlangDaftarReminder(),
+    muatUlangDaftarInvoice(),
+    muatUlangDaftarDokumen(),
+    muatUlangCatatanKalender(),
+    muatUlangPesan(),
+    muatUlangLogAktivitas(),
+  ]);
 }
 
 const api = {
